@@ -49,10 +49,28 @@ class DuplicateModel(BugCoupleModel):
 
         self.extraction_pipeline = Pipeline(
             [
-                ("bug_extractor", bug_features.BugExtractor([], cleanup_functions)),
+                (
+                    "bug_extractor",
+                    bug_features.BugExtractor([], cleanup_functions, merge_data=False),
+                ),
                 (
                     "union",
-                    ColumnTransformer([("text", self.text_vectorizer(), "text")]),
+                    ColumnTransformer(
+                        [
+                            ("title1", self.text_vectorizer(), "title1"),
+                            ("title2", self.text_vectorizer(), "title2"),
+                            (
+                                "first_comment1",
+                                self.text_vectorizer(),
+                                "first_comment1",
+                            ),
+                            (
+                                "first_comment2",
+                                self.text_vectorizer(),
+                                "first_comment2",
+                            ),
+                        ]
+                    ),
                 ),
             ]
         )
