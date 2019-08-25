@@ -8,7 +8,7 @@ import bisect
 import random
 import re
 from collections import defaultdict
-from itertools import chain
+from itertools import chain, islice
 
 import numpy as np
 from pyemd import emd
@@ -45,11 +45,11 @@ REPORTERS_TO_IGNORE = {"intermittent-bug-filer@mozilla.bugs", "wptsync@mozilla.b
 duplicates = defaultdict(set)
 all_ids = set(
     bug["id"]
-    for bug in bugzilla.get_bugs()
+    for bug in islice(bugzilla.get_bugs(), 6000)
     if bug["creator"] not in REPORTERS_TO_IGNORE and "dupeme" not in bug["keywords"]
 )
 
-for bug in bugzilla.get_bugs():
+for bug in islice(bugzilla.get_bugs(), 6000):
     dupes = [entry for entry in bug["duplicates"] if entry in all_ids]
     if bug["dupe_of"] in all_ids:
         dupes.append(bug["dupe_of"])
@@ -112,7 +112,7 @@ class BaseSimilarity(abc.ABC):
 
         queries = 0
         apk = []
-        for bug in tqdm(bugzilla.get_bugs()):
+        for bug in tqdm(islice(bugzilla.get_bugs(), 6000)):
             if duplicates[bug["id"]]:
                 score = 0
                 num_hits = 0
@@ -177,7 +177,7 @@ class LSISimilarity(BaseSimilarity):
         super().__init__(cleanup_urls=cleanup_urls, nltk_tokenizer=nltk_tokenizer)
         self.corpus = []
 
-        for bug in bugzilla.get_bugs():
+        for bug in islice(bugzilla.get_bugs(), 6000):
 
             textual_features = self.text_preprocess(self.get_text(bug))
             self.corpus.append([bug["id"], textual_features])
@@ -236,7 +236,7 @@ class NeighborsSimilarity(BaseSimilarity):
         text = []
         self.bug_ids = []
 
-        for bug in bugzilla.get_bugs():
+        for bug in islice(bugzilla.get_bugs(), 6000):
             text.append(self.text_preprocess(self.get_text(bug), join=True))
             self.bug_ids.append(bug["id"])
 
@@ -262,7 +262,7 @@ class Word2VecSimilarityBase(BaseSimilarity):
         self.corpus = []
         self.bug_ids = []
         self.cut_off = cut_off
-        for bug in bugzilla.get_bugs():
+        for bug in islice(bugzilla.get_bugs(), 6000):
             self.corpus.append(self.text_preprocess(self.get_text(bug)))
             self.bug_ids.append(bug["id"])
 
@@ -459,7 +459,11 @@ class Word2VecWmdRelaxSimilarity(Word2VecSimilarityBase):
         nbow["query"] = tuple([None] + list(zip(*query)))
         distances = WMD(embeddings, nbow, vocabulary_min=1).nearest_neighbors("query")
 
-        return [self.bug_ids[distance[0]] for distance in distances]
+        return [
+            self.bug_ids[distance[0]]
+            for distance in distances
+            if distance[1] < self.cut_off
+        ]
 
     def get_distance(self, query1, query2):
         query1 = self.text_preprocess(self.get_text(query1))
@@ -520,7 +524,11 @@ class Word2VecSoftCosSimilarity(Word2VecSimilarityBase):
         similarities = self.softcosinesimilarity[
             self.dictionary.doc2bow(self.text_preprocess(self.get_text(query)))
         ]
-        return [self.bug_ids[similarity[0]] for similarity in similarities]
+        return [
+            self.bug_ids[similarity[0]]
+            for similarity in similarities
+            if similarity[1] < self.cut_off
+        ]
 
     def get_distance(self, query1, query2):
         raise NotImplementedError
